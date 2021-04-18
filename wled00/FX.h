@@ -29,12 +29,6 @@
 #ifndef WS2812FX_h
 #define WS2812FX_h
 
-#ifdef ESP32_MULTISTRIP
-  #include "../usermods/esp32_multistrip/NpbWrapper.h"
-#else
-  #include "NpbWrapper.h"
-#endif
-
 #include "const.h"
 
 #define FASTLED_INTERNAL //remove annoying pragma messages
@@ -174,7 +168,7 @@
 #define FX_MODE_POLICE_ALL              49
 #define FX_MODE_TWO_DOTS                50
 #define FX_MODE_TWO_AREAS               51
-#define FX_MODE_CIRCUS_COMBUSTUS        52
+#define FX_MODE_RUNNING_DUAL            52
 #define FX_MODE_HALLOWEEN               53
 #define FX_MODE_TRICOLOR_CHASE          54
 #define FX_MODE_TRICOLOR_WIPE           55
@@ -511,7 +505,7 @@ class WS2812FX {
       _mode[FX_MODE_POLICE_ALL]              = &WS2812FX::mode_police_all;
       _mode[FX_MODE_TWO_DOTS]                = &WS2812FX::mode_two_dots;
       _mode[FX_MODE_TWO_AREAS]               = &WS2812FX::mode_two_areas;
-      _mode[FX_MODE_CIRCUS_COMBUSTUS]        = &WS2812FX::mode_circus_combustus;
+      _mode[FX_MODE_RUNNING_DUAL]            = &WS2812FX::mode_running_dual;
       _mode[FX_MODE_HALLOWEEN]               = &WS2812FX::mode_halloween;
       _mode[FX_MODE_TRICOLOR_CHASE]          = &WS2812FX::mode_tricolor_chase;
       _mode[FX_MODE_TRICOLOR_WIPE]           = &WS2812FX::mode_tricolor_wipe;
@@ -586,12 +580,11 @@ class WS2812FX {
       ablMilliampsMax = 850;
       currentMilliamps = 0;
       timebase = 0;
-      bus = new NeoPixelWrapper();
       resetSegments();
     }
 
     void
-      init(bool supportWhite, uint16_t countPixels, bool skipFirst),
+      finalizeInit(uint16_t countPixels, bool skipFirst),
       service(void),
       blur(uint8_t),
       fill(uint32_t),
@@ -611,12 +604,11 @@ class WS2812FX {
       setPixelColor(uint16_t n, uint32_t c),
       setPixelColor(uint16_t n, uint8_t r, uint8_t g, uint8_t b, uint8_t w = 0),
       show(void),
-      setRgbwPwm(void),
       setColorOrder(uint8_t co),
       setPixelSegment(uint8_t n);
 
     bool
-      reverseMode = false,      //is the entire LED strip reversed?
+      isRgbw = false,
       gammaCorrectBri = false,
       gammaCorrectCol = true,
       applyToAllSelected = true,
@@ -631,6 +623,8 @@ class WS2812FX {
       paletteFade = 0,
       paletteBlend = 0,
       milliampsPerLed = 55,
+//      getStripType(uint8_t strip=0),
+//      setStripType(uint8_t type, uint8_t strip=0),
       getBrightness(void),
       getMode(void),
       getSpeed(void),
@@ -642,15 +636,23 @@ class WS2812FX {
       getColorOrder(void),
       gamma8(uint8_t),
       gamma8_cal(uint8_t, float),
+      sin_gap(uint16_t),
       get_random_wheel_index(uint8_t);
 
     int8_t
+//      setStripPin(uint8_t strip, int8_t pin),
+//      getStripPin(uint8_t strip=0),
+//      setStripPinClk(uint8_t strip, int8_t pin),
+//      getStripPinClk(uint8_t strip=0),
       tristate_square8(uint8_t x, uint8_t pulsewidth, uint8_t attdec);
 
     uint16_t
       ablMilliampsMax,
       currentMilliamps,
-      triwave16(uint16_t);
+//      setStripLen(uint8_t strip, uint16_t len),
+//      getStripLen(uint8_t strip=0),
+      triwave16(uint16_t),
+      getFps();
 
     uint32_t
       now,
@@ -728,7 +730,7 @@ class WS2812FX {
       mode_police_all(void),
       mode_two_dots(void),
       mode_two_areas(void),
-      mode_circus_combustus(void),
+      mode_running_dual(void),
       mode_bicolor_chase(void),
       mode_tricolor_chase(void),
       mode_tricolor_wipe(void),
@@ -796,8 +798,6 @@ class WS2812FX {
       mode_dynamic_smooth(void);
 
   private:
-    NeoPixelWrapper *bus;
-
     uint32_t crgb_to_col(CRGB fastled);
     CRGB col_to_crgb(uint32_t);
     CRGBPalette16 currentPalette;
@@ -809,12 +809,12 @@ class WS2812FX {
     uint16_t _usedSegmentData = 0;
     uint16_t _transitionDur = 750;
 
+    uint16_t _cumulativeFps = 2;
+
     void load_gradient_palette(uint8_t);
     void handle_palette(void);
 
     bool
-      shouldStartBus = false,
-      _useRgbw = false,
       _skipFirstMode,
       _triggered;
 
@@ -830,7 +830,7 @@ class WS2812FX {
       dynamic(bool),
       scan(bool),
       theater_chase(uint32_t, uint32_t, bool),
-      running_base(bool),
+      running_base(bool,bool),
       larson_scanner(bool),
       sinelon_base(bool,bool),
       dissolve(uint32_t),
@@ -861,12 +861,6 @@ class WS2812FX {
     uint32_t _colors_t[3];
     uint8_t _bri_t;
     
-    #ifdef WLED_USE_ANALOG_LEDS
-    uint32_t _analogLastShow = 0;
-    RgbwColor _analogLastColor = 0;
-    uint8_t _analogLastBri = 0;
-    #endif
-    
     uint8_t _segment_index = 0;
     uint8_t _segment_index_palette_last = 99;
     segment _segments[MAX_NUM_SEGMENTS] = { // SRAM footprint: 24 bytes per element
@@ -891,7 +885,7 @@ const char JSON_mode_names[] PROGMEM = R"=====([
 "Sparkle","Sparkle Dark","Sparkle+","Strobe","Strobe Rainbow","Strobe Mega","Blink Rainbow","Android","Chase","Chase Random",
 "Chase Rainbow","Chase Flash","Chase Flash Rnd","Rainbow Runner","Colorful","Traffic Light","Sweep Random","Running 2","Aurora","Stream",
 "Scanner","Lighthouse","Fireworks","Rain","Tetrix","Fire Flicker","Gradient","Loading","Police","Police All",
-"Two Dots","Two Areas","Circus","Halloween","Tri Chase","Tri Wipe","Tri Fade","Lightning","ICU","Multi Comet",
+"Two Dots","Two Areas","Running Dual","Halloween","Tri Chase","Tri Wipe","Tri Fade","Lightning","ICU","Multi Comet",
 "Scanner Dual","Stream 2","Oscillate","Pride 2015","Juggle","Palette","Fire 2012","Colorwaves","Bpm","Fill Noise",
 "Noise 1","Noise 2","Noise 3","Noise 4","Colortwinkles","Lake","Meteor","Meteor Smooth","Railway","Ripple",
 "Twinklefox","Twinklecat","Halloween Eyes","Solid Pattern","Solid Pattern Tri","Spots","Spots Fade","Glitter","Candle","Fireworks Starburst",
