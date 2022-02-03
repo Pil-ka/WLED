@@ -123,6 +123,22 @@ bool deserializeConfig(JsonObject doc, bool fromFS) {
   }
   if (hw_led["rev"]) busses.getBus(0)->reversed = true; //set 0.11 global reversed setting for first bus
 
+  // read color order map configuration
+  JsonArray hw_com = hw[F("com")];
+  if (!hw_com.isNull()) {
+    ColorOrderMap com = {};
+    uint8_t s = 0;
+    for (JsonObject entry : hw_com) {
+      if (s > WLED_MAX_COLOR_ORDER_MAPPINGS) break;
+      uint16_t start = entry[F("start")] | 0;
+      uint16_t len = entry[F("len")] | 0;
+      uint8_t colorOrder = (int)entry[F("order")];
+      com.add(start, len, colorOrder);
+      s++;
+    }
+    busses.updateColorOrderMap(com);
+  }
+
   // read multiple button configuration
   JsonObject btn_obj = hw["btn"];
   JsonArray hw_btn_ins = btn_obj[F("ins")];
@@ -195,6 +211,10 @@ bool deserializeConfig(JsonObject doc, bool fromFS) {
     rlyMde = !relay["rev"];
   }
 
+  CJSON(serialBaud, hw[F("baud")]);
+  if (serialBaud < 96 || serialBaud > 15000) serialBaud = 1152;
+  updateBaudRate(serialBaud *100);
+
   //int hw_status_pin = hw[F("status")]["pin"]; // -1
 
   JsonObject light = doc[F("light")];
@@ -240,8 +260,9 @@ bool deserializeConfig(JsonObject doc, bool fromFS) {
   CJSON(receiveNotificationColor, if_sync_recv["col"]);
   CJSON(receiveNotificationEffects, if_sync_recv["fx"]);
   CJSON(receiveGroups, if_sync_recv["grp"]);
+  CJSON(receiveSegmentOptions, if_sync_recv["seg"]);
   //! following line might be a problem if called after boot
-  receiveNotifications = (receiveNotificationBrightness || receiveNotificationColor || receiveNotificationEffects);
+  receiveNotifications = (receiveNotificationBrightness || receiveNotificationColor || receiveNotificationEffects || receiveSegmentOptions);
 
   JsonObject if_sync_send = if_sync["send"];
   prev = notifyDirectDefault;
@@ -573,6 +594,18 @@ void serializeConfig() {
     ins[F("rgbw")] = bus->isRgbw();
   }
 
+  JsonArray hw_com = hw.createNestedArray(F("com"));
+  const ColorOrderMap& com = busses.getColorOrderMap();
+  for (uint8_t s = 0; s < com.count(); s++) {
+    const ColorOrderMapEntry *entry = com.get(s);
+    if (!entry) break;
+
+    JsonObject co = hw_com.createNestedObject();
+    co[F("start")] = entry->start;
+    co[F("len")] = entry->len;
+    co[F("order")] = entry->colorOrder;
+  }
+
   // button(s)
   JsonObject hw_btn = hw.createNestedObject("btn");
   hw_btn["max"] = WLED_MAX_BUTTONS; // just information about max number of buttons (not actually used)
@@ -600,6 +633,8 @@ void serializeConfig() {
   JsonObject hw_relay = hw.createNestedObject(F("relay"));
   hw_relay["pin"] = rlyPin;
   hw_relay["rev"] = !rlyMde;
+
+  hw[F("baud")] = serialBaud;
 
   //JsonObject hw_status = hw.createNestedObject("status");
   //hw_status["pin"] = -1;
@@ -640,6 +675,7 @@ void serializeConfig() {
   if_sync_recv["col"] = receiveNotificationColor;
   if_sync_recv["fx"] = receiveNotificationEffects;
   if_sync_recv["grp"] = receiveGroups;
+  if_sync_recv["seg"] = receiveSegmentOptions;
 
   JsonObject if_sync_send = if_sync.createNestedObject("send");
   if_sync_send[F("dir")] = notifyDirect;
