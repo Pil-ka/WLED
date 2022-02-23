@@ -10,7 +10,7 @@
 // https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-reference/peripherals/adc.html
 #ifndef USERMOD_BATTERY_MEASUREMENT_PIN
   #ifdef ARDUINO_ARCH_ESP32
-    #define USERMOD_BATTERY_MEASUREMENT_PIN 32
+    #define USERMOD_BATTERY_MEASUREMENT_PIN 3
   #else //ESP8266 boards
     #define USERMOD_BATTERY_MEASUREMENT_PIN A0
   #endif
@@ -31,7 +31,7 @@
 
 // the frequency to check the battery, 30 sec
 #ifndef USERMOD_BATTERY_MEASUREMENT_INTERVAL
-  #define USERMOD_BATTERY_MEASUREMENT_INTERVAL 30000
+  #define USERMOD_BATTERY_MEASUREMENT_INTERVAL 10000
 #endif
 
 
